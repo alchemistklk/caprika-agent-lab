@@ -16,6 +16,7 @@ CALLBACK_DELIVERY = %w[automatic manual-required].freeze
 CALLBACK_KIND = %w[checkpoint closeout].freeze
 NEXT_ACTION = %w[child-repairing parent-decision-required none].freeze
 FAILURE_CLASSIFICATION = %w[introduced-regression baseline-existing mixed unknown not-applicable].freeze
+CALLBACK_TARGET_ORIGIN = %w[initial-delegation explicit-brief manual-unresolved].freeze
 
 CALLBACK_EXAMPLE = {
   "callback_kind" => "closeout",
@@ -37,7 +38,8 @@ CALLBACK_EXAMPLE = {
   "archive_reason" => "parent commit remains",
   "next_action" => "none",
   "callback_delivery" => "automatic",
-  "callback_target" => "parent-thread-id"
+  "callback_target" => "parent-thread-id",
+  "callback_target_origin" => "initial-delegation"
 }.freeze
 
 CHECKPOINT_EXAMPLE = CALLBACK_EXAMPLE.merge(
@@ -155,6 +157,7 @@ def normalize_callback(data)
   archive = enum_value(data, "archive", ARCHIVE)
   next_action = enum_value(data, "next_action", NEXT_ACTION)
   callback_delivery = enum_value(data, "callback_delivery", CALLBACK_DELIVERY)
+  callback_target_origin = enum_value(data, "callback_target_origin", CALLBACK_TARGET_ORIGIN)
   commit = required_string(data, "commit")
 
   contract!(callback_kind == "checkpoint", "in-progress execution requires a checkpoint callback") if execution == "in-progress"
@@ -180,8 +183,13 @@ def normalize_callback(data)
   end
 
   contract!(delivery != "committed", "read-only Git cannot report committed delivery") if git_capability == "read-only"
-  required_string(data, "callback_target") if callback_delivery == "automatic"
-  required_string(data, "callback_error") if callback_delivery == "manual-required"
+  if callback_delivery == "automatic"
+    required_string(data, "callback_target")
+    contract!(callback_target_origin != "manual-unresolved", "automatic callback requires a pinned parent route")
+  else
+    required_string(data, "callback_error")
+    contract!(callback_target_origin == "manual-unresolved", "manual callback requires an unresolved route")
+  end
 
   changed = data["changed"]
   changed = [changed] if changed.is_a?(String)
@@ -208,6 +216,7 @@ def normalize_callback(data)
     archive_reason: required_string(data, "archive_reason"),
     next_action: next_action,
     callback_delivery: callback_delivery,
+    callback_target_origin: callback_target_origin,
     callback_error: data["callback_error"]
   }
 end
@@ -233,7 +242,8 @@ def render_callback(callback)
     "Needs parent: #{callback[:needs_parent]}",
     "Archive: #{callback[:archive]} — #{callback[:archive_reason]}",
     "Next action: #{callback[:next_action]}",
-    "Callback delivery: #{callback[:callback_delivery]}"
+    "Callback delivery: #{callback[:callback_delivery]}",
+    "Callback target origin: #{callback[:callback_target_origin]}"
   ]
   lines << "Callback error: #{callback[:callback_error]}" if callback[:callback_delivery] == "manual-required"
   lines.join("\n")
