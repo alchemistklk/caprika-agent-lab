@@ -92,10 +92,32 @@ read-only `.git` entry wins over filesystem permissions. Do not create a probe
 lock solely to test access. If Git is read-only, transfer commit Delivery to the
 parent or user and continue implementation.
 
-### 6. Execute and classify
+### 6. Notify on validation trouble, then execute and classify
 
 Do not reopen settled planning. Preserve unrelated changes and validate before
 closeout.
+
+On the first failure of a required full gate, do not silently continue. Before
+the next broad rerun or a material repair, inspect the exact failures and send
+one `checkpoint` callback to the parent. The checkpoint must state:
+
+- the failing command and exact failed criteria;
+- whether each failure is `introduced-regression`, `baseline-existing`, or
+  `unknown`; do not call a failure baseline-existing without evidence;
+- the child’s next action and whether a parent decision is needed.
+
+Use `Execution: in-progress`, `Validation: failed | partial`,
+`Delivery: pending`, and `Archive: keep-active`. A checkpoint is nonblocking:
+the child continues safe, in-scope diagnosis and repair after it is delivered.
+The callback input must carry `failure_classification` and `failure_evidence`;
+the validator rejects a failed checkpoint that marks the classification
+`not-applicable`.
+Send at most one checkpoint per validation cycle; send another only when the
+classification materially changes or a parent decision is newly required.
+
+If repair cannot continue, validation cannot be made to pass, access is needed,
+or scope must change, send a closeout callback before ending the turn. Do not
+wait for the parent to infer a problem from task silence.
 
 - `done`: implementation and acceptance are complete. Parent-owned commit,
   review, merge, or archive remains Delivery, not a blocker.
@@ -106,20 +128,24 @@ Commit/merge failure is `blocked` only when it is an explicit acceptance
 criterion owned by the child. The callback CLI rejects contradictory status
 combinations.
 
-### 7. Render and deliver one callback
+### 7. Render and deliver lifecycle callbacks
 
 At closeout, inspect the callback input schema only when needed:
 
 ```bash
 with-env scripts/issue-thread callback --example
+with-env scripts/issue-thread callback --example checkpoint
 ```
 
 Pass completed JSON to `issue-thread callback`; use its stdout as the callback.
+Use `callback_kind: checkpoint` for an in-progress validation alert and
+`callback_kind: closeout` for `done`, `blocked`, or `scope-change`.
 
-In automatic mode, call `send_message_to_thread` once with
+In automatic mode, call `send_message_to_thread` for each required lifecycle
+event with
 `{ threadId: parent_thread_id, prompt: callback }`. On success, do not repeat the
-full callback. If target discovery or sending fails, render one manual callback
-with the exact reason.
+same event. If target discovery or sending fails, render one manual callback
+with the exact reason before ending the turn.
 
 ### 8. Parent closeout
 

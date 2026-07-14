@@ -63,6 +63,27 @@ schema is needed. Pass completed JSON to `scripts/issue-thread callback`, then:
 
 Do not archive this thread.
 
+### Required Validation Escalation
+
+When a required full validation command fails, first inspect every failed
+criterion and classify it as `introduced-regression`, `baseline-existing`, or
+`unknown`. Before the next broad rerun or a material repair, send exactly one
+automatic `checkpoint` callback:
+
+- `callback_kind`: `checkpoint`
+- `execution`: `in-progress`
+- `validation`: `failed` or `partial`
+- `delivery`: `pending`
+- `archive`: `keep-active`
+- `next_action`: `child-repairing` or `parent-decision-required`
+
+Include the failed command, criteria, classification evidence, and next action.
+Set `failure_classification` to `introduced-regression`, `baseline-existing`,
+`mixed`, or `unknown`; include the comparison result in `failure_evidence`.
+Continue only safe, in-scope repair after delivery. If the child cannot repair,
+needs access, or needs a scope decision, send a `closeout` callback with
+`execution: blocked` or `scope-change` before ending the turn.
+
 ## Optional Risk Context
 
 ### Parent / Source
@@ -96,4 +117,3 @@ Optional:
 
 - <specific condition requiring a parent decision>
 ````
-
