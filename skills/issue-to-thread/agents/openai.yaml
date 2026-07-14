@@ -1,0 +1,7 @@
+interface:
+  display_name: "Issue to Thread"
+  short_description: "Launch a clean executor with callback and delivery control"
+  default_prompt: "Use $issue-to-thread to turn this approved issue into a clean Codex execution thread without forking, then wire its target, automatic parent callback, Git delivery owner, title, and archive lifecycle."
+
+policy:
+  allow_implicit_invocation: true

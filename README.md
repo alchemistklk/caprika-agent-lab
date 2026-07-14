@@ -29,6 +29,7 @@ inspected, repeated, improved, and eventually turned into product surfaces.
 | `patterns/` | Reusable engineering and product patterns extracted from labs. |
 | `case-notes/` | Evidence-backed notes about public or approved work. |
 | `content-workflows/` | Content-generation workflows, production notes, and publishable writeups. |
+| `skills/` | Installable agent skills with bounded, inspectable automation contracts. |
 | `templates/` | Reusable formats for adding new labs, case studies, and workflow notes. |
 | `assets/` | Images, diagrams, screenshots, and other public-safe supporting assets. |
 
@@ -62,6 +63,7 @@ Planned areas:
   readback.
 - `local-agent-runtime`: CLIs, daemons, filesystem state, and desktop bridges.
 - `agent-ux`: visible state, human control, cancellation, retry, and recovery.
+- `issue-to-thread`: approved Issue to clean executor task, callback, and delivery lifecycle.
 
 ## Entry Template
 
