@@ -1,0 +1,281 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+
+class ContractError < StandardError; end
+
+MANAGERS = %w[plan dev qa debug deploy security data browser docs content ops].freeze
+EXECUTION = %w[done blocked scope-change].freeze
+VALIDATION = %w[passed partial failed not-run].freeze
+DELIVERY = %w[committed parent-action-required user-action-required not-required].freeze
+GIT_CAPABILITY = %w[writable read-only unknown not-applicable].freeze
+ACCEPTANCE = %w[passed partial failed].freeze
+ARCHIVE = %w[ready-to-archive keep-active archive-after-parent-action].freeze
+CALLBACK_DELIVERY = %w[automatic manual-required].freeze
+
+CALLBACK_EXAMPLE = {
+  "execution" => "done",
+  "validation" => "passed",
+  "validation_summary" => "all required checks passed",
+  "delivery" => "parent-action-required",
+  "git_capability" => "read-only",
+  "commit" => "not-created",
+  "issue" => "Issue 004 — /absolute/path/to/issue.md",
+  "thread" => "💻 dev-evidence-citations-after-plan",
+  "summary" => "Implemented and validated the approved issue.",
+  "changed" => ["path/to/file.ts"],
+  "acceptance" => "passed",
+  "needs_parent" => "Review and commit the listed paths.",
+  "archive" => "archive-after-parent-action",
+  "archive_reason" => "parent commit remains",
+  "callback_delivery" => "automatic",
+  "callback_target" => "parent-thread-id"
+}.freeze
+
+def contract!(condition, message)
+  raise ContractError, message unless condition
+end
+
+def read_input(path)
+  return STDIN.read if path.nil? || path == "-"
+
+  File.read(path)
+end
+
+def clean_field_value(raw)
+  value = raw.strip
+  backtick_match = value.match(/\A`([^`]*)`/)
+  value = backtick_match[1] if backtick_match
+  value.split(/\s+—\s+/, 2).first.strip
+end
+
+def markdown_field(text, label)
+  line = text.lines.find { |candidate| candidate.match?(/\A#{Regexp.escape(label)}:\s*/) }
+  raise ContractError, "missing field: #{label}" unless line
+
+  value = clean_field_value(line.sub(/\A#{Regexp.escape(label)}:\s*/, ""))
+  contract!(!value.empty? && !value.include?("<"), "unfilled field: #{label}")
+  value
+end
+
+def validate_title(title)
+  contract!(!title.nil? && !title.empty?, "title is required")
+  contract!(!title.include?("/") && !title.include?("—"), "title cannot contain / or an em dash")
+  match = title.match(/\A([^\x00-\x7F]+)\s+([a-z0-9]+(?:-[a-z0-9]+)+)\z/u)
+  contract!(match, "title must be: emoji lowercase-hyphen-slug")
+  slug = match[2]
+  contract!(MANAGERS.include?(slug.split("-", 2).first), "title must start with a known manager")
+  contract!(title.length <= 60, "title must be 60 characters or fewer")
+  title
+end
+
+def validate_brief(text)
+  headings = [
+    "# Execution Brief",
+    "## Issue",
+    "## Thread",
+    "## Goal / What To Build",
+    "## Acceptance Criteria",
+    "## Validation",
+    "## Delivery Contract",
+    "## Out Of Scope",
+    "## Callback"
+  ]
+  headings.each { |heading| contract!(text.lines.any? { |line| line.strip == heading }, "missing heading: #{heading}") }
+
+  title = validate_title(markdown_field(text, "Title"))
+  target = markdown_field(text, "Target")
+  target_kind = %w[local worktree projectless].find { |kind| target.match?(/\b#{kind}\b/) }
+  contract!(target_kind, "Target must identify local, worktree, or projectless")
+
+  commit_required = markdown_field(text, "Commit required")
+  commit_owner = markdown_field(text, "Commit owner")
+  git_capability = markdown_field(text, "Git capability")
+  callback_mode = markdown_field(text, "Mode")
+
+  contract!(%w[yes no].include?(commit_required), "Commit required must be yes or no")
+  contract!(%w[child parent user none].include?(commit_owner), "invalid Commit owner")
+  contract!(GIT_CAPABILITY.include?(git_capability), "invalid Git capability")
+  contract!(%w[automatic manual].include?(callback_mode), "Mode must be automatic or manual")
+  contract!(commit_owner == "none", "Commit owner must be none when no commit is required") if commit_required == "no"
+  contract!(commit_owner != "none", "Commit owner cannot be none when a commit is required") if commit_required == "yes"
+  contract!(!(git_capability == "read-only" && commit_owner == "child"), "read-only Git cannot have child commit ownership")
+  contract!(git_capability == "not-applicable", "projectless target requires not-applicable Git capability") if target_kind == "projectless"
+
+  { title: title, target: target_kind, callback: callback_mode }
+end
+
+def required_string(data, key)
+  value = data[key]
+  contract!(value.is_a?(String) && !value.strip.empty?, "missing or empty callback field: #{key}")
+  value.strip
+end
+
+def enum_value(data, key, allowed)
+  value = required_string(data, key)
+  contract!(allowed.include?(value), "invalid #{key}: #{value}")
+  value
+end
+
+def normalize_callback(data)
+  execution = enum_value(data, "execution", EXECUTION)
+  validation = enum_value(data, "validation", VALIDATION)
+  delivery = enum_value(data, "delivery", DELIVERY)
+  git_capability = enum_value(data, "git_capability", GIT_CAPABILITY)
+  acceptance = enum_value(data, "acceptance", ACCEPTANCE)
+  archive = enum_value(data, "archive", ARCHIVE)
+  callback_delivery = enum_value(data, "callback_delivery", CALLBACK_DELIVERY)
+  commit = required_string(data, "commit")
+
+  contract!(acceptance == "passed", "done execution requires passed acceptance") if execution == "done"
+  contract!(acceptance != "passed", "blocked execution cannot have passed acceptance") if execution == "blocked"
+  contract!(!%w[failed not-run].include?(validation), "done execution cannot have failed or not-run validation") if execution == "done"
+
+  if delivery == "committed"
+    contract!(git_capability == "writable", "committed delivery requires writable Git")
+    contract!(commit.match?(/\A[0-9a-f]{7,40}\z/i), "committed delivery requires a Git commit hash")
+  elsif delivery == "not-required"
+    contract!(commit == "not-required", "not-required delivery requires Commit=not-required")
+  else
+    contract!(commit == "not-created", "parent/user action delivery requires Commit=not-created")
+  end
+
+  contract!(delivery != "committed", "read-only Git cannot report committed delivery") if git_capability == "read-only"
+  required_string(data, "callback_target") if callback_delivery == "automatic"
+  required_string(data, "callback_error") if callback_delivery == "manual-required"
+
+  changed = data["changed"]
+  changed = [changed] if changed.is_a?(String)
+  contract!(changed.is_a?(Array) && !changed.empty? && changed.all? { |item| item.is_a?(String) && !item.empty? }, "changed must be a non-empty string or array")
+
+  {
+    execution: execution,
+    validation: validation,
+    validation_summary: required_string(data, "validation_summary"),
+    delivery: delivery,
+    git_capability: git_capability,
+    commit: commit,
+    issue: required_string(data, "issue"),
+    thread: required_string(data, "thread"),
+    summary: required_string(data, "summary"),
+    changed: changed,
+    acceptance: acceptance,
+    needs_parent: required_string(data, "needs_parent"),
+    archive: archive,
+    archive_reason: required_string(data, "archive_reason"),
+    callback_delivery: callback_delivery,
+    callback_error: data["callback_error"]
+  }
+end
+
+def render_callback(callback)
+  lines = [
+    "## Child Callback: #{callback[:execution]}",
+    "",
+    "Execution: #{callback[:execution]}",
+    "Validation: #{callback[:validation]} — #{callback[:validation_summary]}",
+    "Delivery: #{callback[:delivery]}",
+    "Git capability: #{callback[:git_capability]}",
+    "Commit: #{callback[:commit]}",
+    "Issue: #{callback[:issue]}",
+    "Thread: #{callback[:thread]}",
+    "Summary: #{callback[:summary]}",
+    "Changed: #{callback[:changed].join('; ')}",
+    "Acceptance: #{callback[:acceptance]}",
+    "Needs parent: #{callback[:needs_parent]}",
+    "Archive: #{callback[:archive]} — #{callback[:archive_reason]}",
+    "Callback delivery: #{callback[:callback_delivery]}"
+  ]
+  lines << "Callback error: #{callback[:callback_error]}" if callback[:callback_delivery] == "manual-required"
+  lines.join("\n")
+end
+
+def expect_contract_error
+  failed_as_expected = false
+  begin
+    yield
+  rescue ContractError
+    failed_as_expected = true
+  end
+  raise ContractError, "self-test expected a contract error" unless failed_as_expected
+end
+
+def self_test
+  validate_title("💻 dev-evidence-citations-after-plan")
+  expect_contract_error { validate_title("dev/evidence — blocked") }
+
+  brief = <<~MD
+    # Execution Brief
+    ## Issue
+    Issue 004
+    ## Thread
+    Title: `💻 dev-evidence-citations-after-plan`
+    Target: `Example project, local`
+    ## Goal / What To Build
+    Implement the issue.
+    ## Acceptance Criteria
+    - [ ] Complete.
+    ## Validation
+    - test
+    ## Delivery Contract
+    Commit required: `yes`
+    Commit owner: `parent`
+    Git capability: `unknown`
+    ## Out Of Scope
+    - unrelated work
+    ## Callback
+    Mode: `automatic`
+    Explicit parent: `omitted`
+  MD
+  validate_brief(brief)
+
+  issue_004 = CALLBACK_EXAMPLE.dup
+  normalize_callback(issue_004)
+  expect_contract_error do
+    normalize_callback(issue_004.merge("delivery" => "committed", "commit" => "abcdef1"))
+  end
+  expect_contract_error do
+    normalize_callback(issue_004.merge("execution" => "blocked"))
+  end
+  true
+end
+
+def usage
+  <<~TEXT
+    Usage:
+      issue-thread title <title>
+      issue-thread brief [file|-]
+      issue-thread callback [file|-]
+      issue-thread callback --example
+      issue-thread self-test
+  TEXT
+end
+
+begin
+  command = ARGV.shift
+  case command
+  when "title"
+    title = validate_title(ARGV.join(" "))
+    puts "title_ok #{title}"
+  when "brief"
+    result = validate_brief(read_input(ARGV.shift))
+    puts "brief_ok title=#{result[:title]} target=#{result[:target]} callback=#{result[:callback]}"
+  when "callback"
+    if ARGV.first == "--example"
+      puts JSON.pretty_generate(CALLBACK_EXAMPLE)
+    else
+      data = JSON.parse(read_input(ARGV.shift))
+      puts render_callback(normalize_callback(data))
+    end
+  when "self-test"
+    self_test
+    puts "self_test_ok"
+  else
+    warn usage
+    exit(command.nil? ? 0 : 1)
+  end
+rescue ContractError, JSON::ParserError, Errno::ENOENT => e
+  warn "issue-thread: #{e.message}"
+  exit 1
+end
