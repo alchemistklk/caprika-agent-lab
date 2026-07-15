@@ -51,9 +51,12 @@ completed implementation `blocked` unless delivery is an acceptance criterion.
 
 Mode: `<automatic | manual>`
 Explicit parent: `<parent-thread-id | omitted>`
+Pinned parent: `<resolved once at child startup; never replaced after steering messages>`
 
 For `create_thread`, use automatic mode and resolve the delegation source id
-before the explicit parent. Never target this child thread itself.
+from the original task message before the explicit parent. Persist it as the
+pinned parent. Never target this child thread itself, and never replace the
+pinned parent with the source id of a later `send_message_to_thread` prompt.
 
 At closeout, run `scripts/issue-thread callback --example` only if the input
 schema is needed. Pass completed JSON to `scripts/issue-thread callback`, then:
@@ -62,6 +65,32 @@ schema is needed. Pass completed JSON to `scripts/issue-thread callback`, then:
 - manual: print its stdout once with the exact fallback reason.
 
 Do not archive this thread.
+
+### Required Validation Escalation
+
+When a required full validation command fails, first inspect every failed
+criterion and classify it as `introduced-regression`, `baseline-existing`, or
+`unknown`. Before the next broad rerun or a material repair, send exactly one
+automatic `checkpoint` callback:
+
+- `callback_kind`: `checkpoint`
+- `execution`: `in-progress`
+- `validation`: `failed` or `partial`
+- `delivery`: `pending`
+- `archive`: `keep-active`
+- `next_action`: `child-repairing` or `parent-decision-required`
+- `callback_target_origin`: `initial-delegation` or `explicit-brief`
+
+Include the failed command, criteria, classification evidence, and next action.
+Set `failure_classification` to `introduced-regression`, `baseline-existing`,
+`mixed`, or `unknown`; include the comparison result in `failure_evidence`.
+Automatic callbacks must use the pinned parent route and identify its origin as
+`initial-delegation` or `explicit-brief`. Use `manual-unresolved` only when the
+route genuinely cannot be recovered, together with `callback_delivery:
+manual-required` and an exact `callback_error`.
+Continue only safe, in-scope repair after delivery. If the child cannot repair,
+needs access, or needs a scope decision, send a `closeout` callback with
+`execution: blocked` or `scope-change` before ending the turn.
 
 ## Optional Risk Context
 
@@ -96,4 +125,3 @@ Optional:
 
 - <specific condition requiring a parent decision>
 ````
-

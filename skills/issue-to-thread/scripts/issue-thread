@@ -6,18 +6,25 @@ require "json"
 class ContractError < StandardError; end
 
 MANAGERS = %w[plan dev qa debug deploy security data browser docs content ops].freeze
-EXECUTION = %w[done blocked scope-change].freeze
+EXECUTION = %w[in-progress done blocked scope-change].freeze
 VALIDATION = %w[passed partial failed not-run].freeze
-DELIVERY = %w[committed parent-action-required user-action-required not-required].freeze
+DELIVERY = %w[pending committed parent-action-required user-action-required not-required].freeze
 GIT_CAPABILITY = %w[writable read-only unknown not-applicable].freeze
 ACCEPTANCE = %w[passed partial failed].freeze
 ARCHIVE = %w[ready-to-archive keep-active archive-after-parent-action].freeze
 CALLBACK_DELIVERY = %w[automatic manual-required].freeze
+CALLBACK_KIND = %w[checkpoint closeout].freeze
+NEXT_ACTION = %w[child-repairing parent-decision-required none].freeze
+FAILURE_CLASSIFICATION = %w[introduced-regression baseline-existing mixed unknown not-applicable].freeze
+CALLBACK_TARGET_ORIGIN = %w[initial-delegation explicit-brief manual-unresolved].freeze
 
 CALLBACK_EXAMPLE = {
+  "callback_kind" => "closeout",
   "execution" => "done",
   "validation" => "passed",
   "validation_summary" => "all required checks passed",
+  "failure_classification" => "not-applicable",
+  "failure_evidence" => "all required validation passed",
   "delivery" => "parent-action-required",
   "git_capability" => "read-only",
   "commit" => "not-created",
@@ -29,9 +36,29 @@ CALLBACK_EXAMPLE = {
   "needs_parent" => "Review and commit the listed paths.",
   "archive" => "archive-after-parent-action",
   "archive_reason" => "parent commit remains",
+  "next_action" => "none",
   "callback_delivery" => "automatic",
-  "callback_target" => "parent-thread-id"
+  "callback_target" => "parent-thread-id",
+  "callback_target_origin" => "initial-delegation"
 }.freeze
+
+CHECKPOINT_EXAMPLE = CALLBACK_EXAMPLE.merge(
+  "callback_kind" => "checkpoint",
+  "execution" => "in-progress",
+  "validation" => "failed",
+  "validation_summary" => "pnpm check failed; classifying each failure before repair",
+  "failure_classification" => "unknown",
+  "failure_evidence" => "first checkpoint; compare exact failures against the approved baseline",
+  "delivery" => "pending",
+  "commit" => "not-created",
+  "summary" => "Required validation is not complete; child is investigating and repairing.",
+  "changed" => [],
+  "acceptance" => "failed",
+  "needs_parent" => "Monitoring checkpoint only; decision requested if a failure is baseline or scope-changing.",
+  "archive" => "keep-active",
+  "archive_reason" => "child is repairing validation failures",
+  "next_action" => "child-repairing"
+).freeze
 
 def contract!(condition, message)
   raise ContractError, message unless condition
@@ -119,15 +146,29 @@ def enum_value(data, key, allowed)
 end
 
 def normalize_callback(data)
+  callback_kind = enum_value(data, "callback_kind", CALLBACK_KIND)
   execution = enum_value(data, "execution", EXECUTION)
   validation = enum_value(data, "validation", VALIDATION)
+  failure_classification = enum_value(data, "failure_classification", FAILURE_CLASSIFICATION)
+  failure_evidence = required_string(data, "failure_evidence")
   delivery = enum_value(data, "delivery", DELIVERY)
   git_capability = enum_value(data, "git_capability", GIT_CAPABILITY)
   acceptance = enum_value(data, "acceptance", ACCEPTANCE)
   archive = enum_value(data, "archive", ARCHIVE)
+  next_action = enum_value(data, "next_action", NEXT_ACTION)
   callback_delivery = enum_value(data, "callback_delivery", CALLBACK_DELIVERY)
+  callback_target_origin = enum_value(data, "callback_target_origin", CALLBACK_TARGET_ORIGIN)
   commit = required_string(data, "commit")
 
+  contract!(callback_kind == "checkpoint", "in-progress execution requires a checkpoint callback") if execution == "in-progress"
+  contract!(callback_kind == "closeout", "closeout callback cannot report in-progress execution") if callback_kind == "closeout"
+  contract!(acceptance != "passed", "in-progress execution cannot have passed acceptance") if execution == "in-progress"
+  contract!(delivery == "pending", "in-progress execution requires pending delivery") if execution == "in-progress"
+  contract!(archive == "keep-active", "in-progress execution requires keep-active archive state") if execution == "in-progress"
+  contract!(next_action != "none", "in-progress execution requires a next action") if execution == "in-progress"
+  if callback_kind == "checkpoint" || %w[failed partial].include?(validation)
+    contract!(failure_classification != "not-applicable", "failed or partial validation requires a failure classification")
+  end
   contract!(acceptance == "passed", "done execution requires passed acceptance") if execution == "done"
   contract!(acceptance != "passed", "blocked execution cannot have passed acceptance") if execution == "blocked"
   contract!(!%w[failed not-run].include?(validation), "done execution cannot have failed or not-run validation") if execution == "done"
@@ -138,21 +179,30 @@ def normalize_callback(data)
   elsif delivery == "not-required"
     contract!(commit == "not-required", "not-required delivery requires Commit=not-required")
   else
-    contract!(commit == "not-created", "parent/user action delivery requires Commit=not-created")
+    contract!(commit == "not-created", "pending or parent/user action delivery requires Commit=not-created")
   end
 
   contract!(delivery != "committed", "read-only Git cannot report committed delivery") if git_capability == "read-only"
-  required_string(data, "callback_target") if callback_delivery == "automatic"
-  required_string(data, "callback_error") if callback_delivery == "manual-required"
+  if callback_delivery == "automatic"
+    required_string(data, "callback_target")
+    contract!(callback_target_origin != "manual-unresolved", "automatic callback requires a pinned parent route")
+  else
+    required_string(data, "callback_error")
+    contract!(callback_target_origin == "manual-unresolved", "manual callback requires an unresolved route")
+  end
 
   changed = data["changed"]
   changed = [changed] if changed.is_a?(String)
-  contract!(changed.is_a?(Array) && !changed.empty? && changed.all? { |item| item.is_a?(String) && !item.empty? }, "changed must be a non-empty string or array")
+  contract!(changed.is_a?(Array) && changed.all? { |item| item.is_a?(String) && !item.empty? }, "changed must be a string or array of non-empty strings")
+  contract!(!changed.empty? || callback_kind == "checkpoint", "closeout callback requires at least one changed path")
 
   {
+    callback_kind: callback_kind,
     execution: execution,
     validation: validation,
     validation_summary: required_string(data, "validation_summary"),
+    failure_classification: failure_classification,
+    failure_evidence: failure_evidence,
     delivery: delivery,
     git_capability: git_capability,
     commit: commit,
@@ -164,28 +214,36 @@ def normalize_callback(data)
     needs_parent: required_string(data, "needs_parent"),
     archive: archive,
     archive_reason: required_string(data, "archive_reason"),
+    next_action: next_action,
     callback_delivery: callback_delivery,
+    callback_target_origin: callback_target_origin,
     callback_error: data["callback_error"]
   }
 end
 
 def render_callback(callback)
+  heading = callback[:callback_kind] == "checkpoint" ? "## Child Checkpoint" : "## Child Callback"
   lines = [
-    "## Child Callback: #{callback[:execution]}",
+    "#{heading}: #{callback[:execution]}",
     "",
+    "Callback kind: #{callback[:callback_kind]}",
     "Execution: #{callback[:execution]}",
     "Validation: #{callback[:validation]} — #{callback[:validation_summary]}",
+    "Failure classification: #{callback[:failure_classification]}",
+    "Failure evidence: #{callback[:failure_evidence]}",
     "Delivery: #{callback[:delivery]}",
     "Git capability: #{callback[:git_capability]}",
     "Commit: #{callback[:commit]}",
     "Issue: #{callback[:issue]}",
     "Thread: #{callback[:thread]}",
     "Summary: #{callback[:summary]}",
-    "Changed: #{callback[:changed].join('; ')}",
+    "Changed: #{callback[:changed].empty? ? 'none yet' : callback[:changed].join('; ')}",
     "Acceptance: #{callback[:acceptance]}",
     "Needs parent: #{callback[:needs_parent]}",
     "Archive: #{callback[:archive]} — #{callback[:archive_reason]}",
-    "Callback delivery: #{callback[:callback_delivery]}"
+    "Next action: #{callback[:next_action]}",
+    "Callback delivery: #{callback[:callback_delivery]}",
+    "Callback target origin: #{callback[:callback_target_origin]}"
   ]
   lines << "Callback error: #{callback[:callback_error]}" if callback[:callback_delivery] == "manual-required"
   lines.join("\n")
@@ -232,11 +290,15 @@ def self_test
 
   issue_004 = CALLBACK_EXAMPLE.dup
   normalize_callback(issue_004)
+  normalize_callback(CHECKPOINT_EXAMPLE)
   expect_contract_error do
     normalize_callback(issue_004.merge("delivery" => "committed", "commit" => "abcdef1"))
   end
   expect_contract_error do
     normalize_callback(issue_004.merge("execution" => "blocked"))
+  end
+  expect_contract_error do
+    normalize_callback(CHECKPOINT_EXAMPLE.merge("callback_kind" => "closeout"))
   end
   true
 end
@@ -263,7 +325,9 @@ begin
     puts "brief_ok title=#{result[:title]} target=#{result[:target]} callback=#{result[:callback]}"
   when "callback"
     if ARGV.first == "--example"
-      puts JSON.pretty_generate(CALLBACK_EXAMPLE)
+      example_name = ARGV[1]
+      contract!(example_name.nil? || example_name == "checkpoint", "unknown callback example: #{example_name}")
+      puts JSON.pretty_generate(example_name == "checkpoint" ? CHECKPOINT_EXAMPLE : CALLBACK_EXAMPLE)
     else
       data = JSON.parse(read_input(ARGV.shift))
       puts render_callback(normalize_callback(data))
