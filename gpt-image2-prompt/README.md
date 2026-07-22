@@ -12,6 +12,7 @@ replaceable variables or example presets.
 |---|---|
 | `general-poster.md` | General social poster workflow for milestones, launches, release notes, and proof-of-work posts. |
 | `general-profile-header.md` | General X/Twitter profile header workflow for personal or project positioning. |
+| `product-visual.md` | General product visual workflow for product concepts, feature surfaces, and workflow artifacts. |
 | `style-system.md` | Shared visual constraints and reusable style variables. |
 
 ## Prompt Structure
@@ -31,6 +32,7 @@ The current filled-in preset is Open Design:
 
 - Poster: Open Design 80K GitHub stars.
 - Header: Open Design maintainer identity.
+- Product: agent-native visual build workflow.
 - Palette: black/charcoal, off-white, neon green, restrained blue/magenta/orange.
 
 ## Local Reference Assets
@@ -39,4 +41,3 @@ Reference images from the original exploration are stored outside this repo:
 
 - `/Users/alche/Documents/self-improve/x-intelligence/assets/open-design-80k/`
 - `/Users/alche/Documents/self-improve/x-intelligence/assets/profile-header/`
-

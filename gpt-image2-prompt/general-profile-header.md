@@ -150,3 +150,82 @@ magick input-header.png \
 - A Cubist-surreal design atelier gave a stronger identity than literal road or
   climbing metaphors.
 
+## Preset: Distributed Agent Engineering Header
+
+Use this when the profile should emphasize agents, LLM workflows, engineering,
+local tools, PC/workstation surfaces, and cursor operations without becoming a
+literal tool checklist.
+
+```text
+Create a wide X/Twitter profile header as a distributed agent-native engineering
+atelier.
+
+Do not use readable text. Treat "agent, LLM, PC, cursor, engineering" as
+inspiration, not a strict checklist. Translate them into visual metaphors:
+model-routing chips, local workstation fragments, terminal panes, file stacks,
+artifact preview surfaces, cursor selection traces, workflow nodes, status
+lights, and design canvas handles.
+
+Composition:
+Use a panoramic, evenly distributed layout across the full width. The left,
+center, and right should all contain meaningful but breathable elements. Avoid
+an empty left side and avoid a right-heavy cluster. Some details may sit behind
+the profile portrait crop.
+
+Style:
+Dark Open Design-compatible visual system, charcoal black base, off-white
+geometry, neon green control signals, restrained blue/magenta/orange accents,
+refined product engineering atmosphere.
+
+Avoid:
+readable text, large logo, large human character, generic sci-fi, noisy line
+webs, photorealism, cluttered dashboards, mountains, and roads.
+```
+
+## Preset: Animated Dream Engineering Header
+
+Use this when the profile should feel more cinematic and emotional, with
+animated dream-film color and motion, while still keeping the engineering
+identity visible.
+
+```text
+Create a complete wide profile header for an Open Design maintainer and agent
+engineer, inspired by dream-cinema energy, saturated color rhythm,
+psychological montage, and reality-screen blending. Do not copy any specific
+scene, character, costume, logo, or frame.
+
+Scene:
+A vivid cinematic dream sequence where a real engineering desk, browser
+windows, code terminals, model cards, prompt blocks, cursor actions, design
+canvases, file artifacts, and agent workflow nodes dissolve into a moving dream
+parade of software objects. The world should feel like the boundary between a
+computer desktop and a dream city has collapsed.
+
+Subject:
+No dominant human character. The main subject is a dreamlike agent-engineering
+ecosystem: floating browser windows, local file drawers, terminal panels,
+model-routing cards, cursor arrows, design-canvas frames, glowing workflow
+nodes, artifact preview panes, graph constellations, color blocks, and screen
+portals.
+
+Composition:
+Panoramic Twitter/X header. Fill the entire canvas with a complete image. No
+deliberate avatar-safe blank space, no big empty circle, no right-heavy cluster.
+Arrange objects in a sweeping diagonal dream flow from left to right, with
+foreground, midground, and background layers. Make the image visually complete
+even if the profile portrait overlaps part of it.
+
+Color:
+Saturated reds, warm yellows, cyan blues, violet shadows, magenta highlights,
+neon green technical signals, deep indigo/black base.
+
+Text:
+No readable text, labels, pseudo-words, or slogans.
+
+Avoid:
+copying specific movie characters or frames, readable text, logos, large empty
+areas, black avatar placeholder, generic cyberpunk, generic anime trope,
+photorealism, cluttered unreadable dashboards, large central person, mountains,
+and roads.
+```
+
