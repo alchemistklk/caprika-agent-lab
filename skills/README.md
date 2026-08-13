@@ -12,6 +12,9 @@ capabilities.
 - [`issue-to-thread`](issue-to-thread/): turns one approved tracker issue into
   a clean execution task with a validated brief, callback, and delivery
   contract.
+- [`frame-to-video`](frame-to-video/): turns designed static frames into a
+  narrated, captioned video in one or more aspect ratios, with the stage
+  ordering and verification gates that keep the pipeline honest.
 
 ## Install
 
