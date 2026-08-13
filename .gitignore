@@ -8,3 +8,11 @@ build/
 .cache/
 tmp/
 coverage/
+
+# Local source baselines used for implementation research. These contain full
+# upstream repositories or local-only evidence and must not enter this public
+# repository.
+source-checkouts/*/
+
+# Local shallow clones used by the course's animation reference library.
+content-workflows/agent-from-understanding-to-practice/references/animation/repositories/
