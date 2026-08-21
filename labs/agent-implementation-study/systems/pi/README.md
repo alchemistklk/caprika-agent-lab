@@ -1,5 +1,14 @@
 # Pi Implementation Study
 
+## Study Entry Points
+
+- [Design, runtime, plugin, and evolution study roadmap](./STUDY-ROADMAP.md)
+- This file: locked source baseline and the existing minimal no-tool turn trace
+
+The roadmap is the authority for interactive learning order. This file retains
+research findings that were established before the learning sequence was reset
+to Pi's origin and design philosophy.
+
 ## Scope Lock
 
 - **System:** Pi
@@ -15,11 +24,15 @@
 
 ## Current Phase
 
-- **Phase:** 2 — Trace the minimal happy path
+- **Research phase:** 2 — Trace the minimal happy path
 - **Status:** `researching`
 - **Completed slice:** source trace of one no-tool turn
-- **Next question:** How does a tool call extend the loop into validation,
-  execution, result persistence, and a follow-up model request?
+- **Interactive learning phase:** Part 1 — Why Pi exists
+- **Next learning question:** Was Pi reacting to feature count, or to invisible
+  and unstable default behavior?
+- **Next source question after the design foundation:** How does a tool call
+  extend the loop into validation, execution, result persistence, and a
+  follow-up model request?
 
 ## Architectural Boundary
 
